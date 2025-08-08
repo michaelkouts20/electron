@@ -1,0 +1,205 @@
+// Marvel Chess Game in Canvas
+import React, { useRef, useEffect, useState } from 'react';
+import { Card, CardContent } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Chess } from 'chess.js';
+import stockfish from 'stockfish';
+
+const canvasSize = 640;
+const tileSize = canvasSize / 8;
+
+const marvelWhiteImages = {
+  k: '/images/ironman.png',
+  q: '/images/scarletwitch.png',
+  r: '/images/captainamerica.png',
+  b: '/images/spiderman.png',
+  n: '/images/thor.png',
+  p: '/images/antman.png'
+};
+
+const marvelBlackImages = {
+  k: '/images/thanos.png',
+  q: '/images/hela.png',
+  r: '/images/ebonymaw.png',
+  b: '/images/dormammu.png',
+  n: '/images/loki.png',
+  p: '/images/ultron.png'
+};
+
+const initialProfile = {
+  name: '',
+  wins: 0,
+  losses: 0,
+  puzzlesCompleted: 0,
+  strength: 'Opening',
+  weakness: 'Endgames'
+};
+
+export default function MarvelChess() {
+  const canvasRef = useRef(null);
+  const [chess, setChess] = useState(new Chess());
+  const [profile, setProfile] = useState(initialProfile);
+  const [draggedPiece, setDraggedPiece] = useState(null);
+  const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
+  const [isWhiteTurn, setIsWhiteTurn] = useState(true);
+  const [gameOver, setGameOver] = useState(false);
+  const [aiEnabled, setAiEnabled] = useState(false);
+  const [engine] = useState(() => stockfish());
+  const [evalScore, setEvalScore] = useState(null);
+
+  const moveSound = new Audio('/sounds/move.mp3');
+  const captureSound = new Audio('/sounds/capture.mp3');
+
+  useEffect(() => {
+    renderCanvas();
+  });
+
+  useEffect(() => {
+    if (aiEnabled && !isWhiteTurn && !gameOver) {
+      engine.postMessage("position fen " + chess.fen());
+      engine.postMessage("go depth 15");
+    }
+  }, [isWhiteTurn, aiEnabled, chess, engine, gameOver]);
+
+  useEffect(() => {
+    engine.onmessage = (e) => {
+      if (typeof e === 'string' && e.startsWith('bestmove')) {
+        const [, move] = e.split(' ');
+        if (move && move !== '(none)') {
+          const result = chess.move({ from: move.slice(0, 2), to: move.slice(2, 4), promotion: 'q' });
+          setIsWhiteTurn(true);
+          if (result?.captured) captureSound.play(); else moveSound.play();
+          if (chess.game_over()) setGameOver(true);
+        }
+      } else if (typeof e === 'string' && e.includes('score')) {
+        const match = e.match(/score cp (-?\d+)/);
+        if (match) setEvalScore((+match[1] / 100).toFixed(2));
+      }
+    };
+  }, [engine, chess]);
+
+  const drawBoard = (ctx) => {
+    for (let r = 0; r < 8; r++) {
+      for (let c = 0; c < 8; c++) {
+        ctx.fillStyle = (r + c) % 2 === 0 ? '#ED1D24' : '#1A1A1A';
+        ctx.fillRect(c * tileSize, r * tileSize, tileSize, tileSize);
+      }
+    }
+  };
+
+  const drawPieces = (ctx) => {
+    const board = chess.board();
+    for (let r = 0; r < 8; r++) {
+      for (let c = 0; c < 8; c++) {
+        const piece = board[r][c];
+        if (piece && !(draggedPiece && draggedPiece.from.x === c && draggedPiece.from.y === r)) {
+          const img = new Image();
+          const map = piece.color === 'w' ? marvelWhiteImages : marvelBlackImages;
+          img.src = map[piece.type];
+          img.onload = () => {
+            ctx.drawImage(img, c * tileSize + tileSize * 0.15, r * tileSize + tileSize * 0.15, tileSize * 0.7, tileSize * 0.7);
+          };
+        }
+      }
+    }
+    if (draggedPiece?.image) {
+      ctx.drawImage(draggedPiece.image, draggedPiece.mouse.x - dragOffset.x, draggedPiece.mouse.y - dragOffset.y, tileSize * 0.7, tileSize * 0.7);
+    }
+  };
+
+  const renderCanvas = () => {
+    const canvas = canvasRef.current;
+    const ctx = canvas.getContext('2d');
+    ctx.clearRect(0, 0, canvasSize, canvasSize);
+    drawBoard(ctx);
+    drawPieces(ctx);
+  };
+
+  const getSquare = (x, y) => {
+    return { x: Math.floor(x / tileSize), y: Math.floor(y / tileSize) };
+  };
+
+  const handleMouseDown = (e) => {
+    const rect = canvasRef.current.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+    const square = getSquare(x, y);
+    const board = chess.board();
+    const piece = board[square.y][square.x];
+    if (!piece || (!isWhiteTurn && piece.color === 'w') || (isWhiteTurn && piece.color === 'b')) return;
+
+    const img = new Image();
+    img.src = (piece.color === 'w' ? marvelWhiteImages : marvelBlackImages)[piece.type];
+    img.onload = () => {
+      setDraggedPiece({ from: square, image: img, mouse: { x, y } });
+      setDragOffset({ x: tileSize * 0.35, y: tileSize * 0.35 });
+    };
+  };
+
+  const handleMouseMove = (e) => {
+    if (!draggedPiece) return;
+    const rect = canvasRef.current.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+    setDraggedPiece(prev => ({ ...prev, mouse: { x, y } }));
+  };
+
+  const handleMouseUp = (e) => {
+    if (!draggedPiece) return;
+    const rect = canvasRef.current.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+    const to = getSquare(x, y);
+    const from = draggedPiece.from;
+    setDraggedPiece(null);
+
+    if (from.x === to.x && from.y === to.y) return;
+
+    const move = chess.move({
+      from: `${String.fromCharCode(97 + from.x)}${8 - from.y}`,
+      to: `${String.fromCharCode(97 + to.x)}${8 - to.y}`,
+      promotion: 'q'
+    });
+
+    if (move) {
+      move.captured ? captureSound.play() : moveSound.play();
+      setIsWhiteTurn(!isWhiteTurn);
+      if (chess.game_over()) setGameOver(true);
+    }
+  };
+
+  const loadPuzzle = () => {
+    const fen = '4r1k1/1p3ppp/p1n5/4N3/3P4/P1P3P1/5P1P/4R1K1 w - - 0 1';
+    const puzzle = new Chess();
+    puzzle.load(fen);
+    setChess(puzzle);
+    setIsWhiteTurn(true);
+    setGameOver(false);
+  };
+
+  return (
+    <div className="flex flex-col items-center gap-4 p-4">
+      <Card className="w-full max-w-xl">
+        <CardContent className="flex flex-col items-center gap-2">
+          <canvas
+            ref={canvasRef}
+            width={canvasSize}
+            height={canvasSize}
+            onMouseDown={handleMouseDown}
+            onMouseMove={handleMouseMove}
+            onMouseUp={handleMouseUp}
+            className="border-4 border-red-600 rounded-xl shadow-lg"
+          ></canvas>
+          <div className="text-lg font-bold text-center">
+            {gameOver ? 'Game Over' : `${isWhiteTurn ? 'Avengers' : 'Villains'} Turn`}
+          </div>
+          <div className="text-sm text-gray-600">Eval: {evalScore !== null ? `${evalScore}` : 'Calculating...'}</div>
+          <Button onClick={() => setAiEnabled(!aiEnabled)} className="mt-2">
+            {aiEnabled ? 'Switch to 2-Player Mode' : 'Play Against AI'}
+          </Button>
+          <Button onClick={loadPuzzle} className="mt-2">Load Marvel Puzzle</Button>
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
