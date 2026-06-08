@@ -32,7 +32,7 @@ Tap **Actions +** for each action below, in order.
 
 **Open YouTube to your channel:**
 > Applications → Open URL → enter your channel URL:
-> `https://www.youtube.com/@CHANNEL_NAME_HERE/videos`
+> `https://www.youtube.com/@thegametimehighlights/videos`
 > Open with: YouTube
 
 **Wait for it to load:**
@@ -119,15 +119,8 @@ You should now see:
 - A **Profile** called "YouTube 06:40 Download"
 - A **Task** called "Download Latest 5 Videos"
 
-### 5. Set your channel URL
-Tap the task **"Download Latest 5 Videos"** → tap **Action [0]** (Variable Set) → change `@CHANNEL_NAME_HERE` to your actual channel handle.
-
-Examples:
-```
-https://www.youtube.com/@MrBeast/videos
-https://www.youtube.com/@CNN/videos
-https://www.youtube.com/@CHANNEL_HANDLE/videos
-```
+### 5. Channel URL — already set
+The channel `@thegametimehighlights` is pre-configured in the file. No edits needed after import.
 
 ### 6. Enable the profile
 Back on the main Tasker screen, make sure the **"YouTube 06:40 Download"** profile has its checkbox ticked (green).
